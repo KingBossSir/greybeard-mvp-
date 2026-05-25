@@ -1,11 +1,10 @@
 import * as ed from "@noble/ed25519";
-import { sha256 } from "@noble/hashes/sha2";
-import { sha512 } from "@noble/hashes/sha2";
+import { sha256, sha512 } from "@noble/hashes/sha2";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { and, asc, desc, eq } from "drizzle-orm";
+import { db } from "./db";
 import { ledgerEvents, type LedgerEvent } from "./schema";
 
-// @noble/ed25519 v2 requires a sync sha512 implementation.
 ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
 
 const GENESIS_HASH = "0".repeat(64);
