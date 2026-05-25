@@ -2,17 +2,24 @@ import { NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ledgerEvents, profiles } from "@/lib/schema";
+import { auth } from "@/lib/auth";
 import { getLedgerPubkeyHex, verifyChain } from "@/lib/ledger";
 
 /**
- * GET /api/ledger/:profileId — public, signed export of an entire chain.
- * No auth required — the ledger IS the public attestation. The profile must be
- * `isLive` to be exported (prevents in-flight verification leakage).
+ * GET /api/ledger/:profileId — authenticated export of a profile's full chain.
+ * The signed ledger may contain sensitive operational payloads (IP, group
+ * context, invite phone, provider refs), so only the owning user may export
+ * the full attestation record.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ profileId: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const { profileId } = await params;
   const [profile] = await db.select().from(profiles).where(eq(profiles.id, profileId));
-  if (!profile || !profile.isLive) {
+  if (!profile || !profile.isLive || profile.userId !== session.user.id) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 

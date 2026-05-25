@@ -2,9 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { invites, profiles, verifications, ledgerEvents } from "./schema";
+import { invites, profiles, verifications } from "./schema";
 import {
   IdentitySubmitSchema,
   LivenessSubmitSchema,
@@ -21,6 +21,8 @@ import { appendEvent } from "./ledger";
 import { auth } from "./auth";
 import { limiters, clientIp } from "./ratelimit";
 import { computeScore } from "./score";
+
+type VerificationStep = "identity" | "liveness" | "location" | "company" | "screening";
 
 async function requireProfile(token: string) {
   // Resolve invite → ensure session user matches consumedBy (or claim now).
@@ -55,7 +57,23 @@ async function requireProfile(token: string) {
   return profile;
 }
 
-async function setStep(profileId: string, step: "identity" | "liveness" | "location" | "company" | "screening", result: Record<string, unknown>, passed: boolean) {
+async function requirePassedSteps(profileId: string, steps: VerificationStep[]) {
+  if (!steps.length) return;
+
+  const rows = await db
+    .select({ step: verifications.step, status: verifications.status })
+    .from(verifications)
+    .where(and(eq(verifications.profileId, profileId), inArray(verifications.step, steps)));
+
+  const byStep = new Map(rows.map((row) => [row.step, row.status]));
+  for (const step of steps) {
+    if (byStep.get(step) !== "passed") {
+      throw new Error(`${step} step required first`);
+    }
+  }
+}
+
+async function setStep(profileId: string, step: VerificationStep, result: Record<string, unknown>, passed: boolean) {
   // Idempotent upsert.
   const existing = await db
     .select()
@@ -154,6 +172,7 @@ export async function submitLocation(token: string, formData: FormData) {
 
   const verdict = crossCheck(parsed);
   const profile = await requireProfile(token);
+  await requirePassedSteps(profile.id, ["identity", "liveness"]);
   await setStep(profile.id, "location", { signals: verdict.signals, reason: verdict.reason ?? null, city: verdict.storedCity }, verdict.ok);
   await appendEvent({
     profileId: profile.id,
@@ -174,6 +193,7 @@ export async function submitCompany(token: string, formData: FormData) {
     signingPersonally: formData.get("signingPersonally") === "on",
   });
   const profile = await requireProfile(token);
+  await requirePassedSteps(profile.id, ["identity", "liveness", "location"]);
 
   let bo = parsed.signingPersonally ? [] : await resolveBeneficialOwners(parsed.registryId!);
   await setStep(profile.id, "company", { registryId: parsed.registryId ?? null, signingPersonally: parsed.signingPersonally, bo }, true);
@@ -187,6 +207,7 @@ export async function submitCompany(token: string, formData: FormData) {
 
 export async function submitScreening(token: string) {
   const profile = await requireProfile(token);
+  await requirePassedSteps(profile.id, ["identity", "liveness", "location", "company"]);
 
   await appendEvent({
     profileId: profile.id,

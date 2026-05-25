@@ -33,7 +33,7 @@ Status: **internal beta**. This document is the audit checklist for going to pub
 - **Envelope encryption.** Each document gets a fresh AES-256-GCM DEK; DEK is wrapped under `VAULT_MASTER_KEY`. In production, swap the wrap step for AWS KMS `Encrypt` (the interface is ready — see `crypto.ts:wrapKey`).
 - **Auth tag verification** on every decrypt — tampered ciphertext throws.
 - **Path traversal:** `LocalDriver.resolve()` rejects `..` / `/` / `\` in storage refs.
-- **Short-lived share links:** 24h default, single-use (`vault_shares.usedAt` flips on first consume), no enumeration (token in URL is the only capability — `docId` path param is a sanity check).
+- **Short-lived share links:** 24h default, single-use (`vault_shares.usedAt` flips on first consume via an atomic update), no enumeration (token in URL is the only capability — `docId` path param is a sanity check).
 - **No directory listing:** S3 driver TODO is documented; you MUST enable bucket-public-access-block before the S3 flip.
 - **PII at rest:** documents encrypted; metadata in Postgres (`vault_docs`) contains *only* the storage ref, content hash, kind, mime, and byte length — no filename, no extracted text.
 
@@ -42,8 +42,8 @@ Status: **internal beta**. This document is the audit checklist for going to pub
 - **Append-only contract** at the application layer. Production tightening: revoke `UPDATE` and `DELETE` on `ledger_events` for the app DB role.
 - **Hash chain.** `hash = SHA-256(prevHash || canonicalize(payload))`. `canonicalize` is sorted-key deterministic JSON so external auditors can recompute.
 - **Signature.** `ed25519(hash, LEDGER_SIGNING_KEY)`. The pubkey is stored per row so key rotation doesn't break old events.
-- **Chain verification.** `verifyChain()` walks the entire chain; `/api/ledger/:id` exposes it publicly with `chain: "verified" | "broken"`.
-- **Race condition.** Concurrent writes to the same profile could fork the chain. MVP mitigations: serial inserts via the Neon HTTP driver + `seq` auto-incrementing serial. Production: wrap in a `BEGIN ISOLATION LEVEL SERIALIZABLE` txn OR add a unique constraint on `(profile_id, prev_hash)` so one of two conflicting writes always fails. **TODO: add this constraint in the next migration.**
+- **Chain verification.** `verifyChain()` walks the entire chain; `/api/ledger/:id` exposes an authenticated owner export with `chain: "verified" | "broken"`.
+- **Race condition.** Concurrent writes to the same profile are constrained by a unique `(profile_id, prev_hash)` index, and the app retries on that conflict to preserve a single chain head.
 
 ### 2.4 WhatsApp webhook (`/api/webhook/whatsapp`)
 
@@ -93,6 +93,14 @@ Status: **internal beta**. This document is the audit checklist for going to pub
 
 Run `npm audit --omit=dev` before each release (`npm run audit`).
 
+Repo-level npm defaults are hardened in `.npmrc`:
+
+- `ignore-scripts=true` to block lifecycle-script execution during install by default.
+- `save-exact=true` so newly added dependencies are pinned, not widened by caret ranges.
+- `engine-strict=true` to fail fast on unsupported Node/npm runtimes.
+
+If a reviewed package genuinely needs a postinstall hook, run a targeted `npm rebuild <package>` after review instead of globally re-enabling install scripts.
+
 ## 4. Out-of-scope (intentional)
 
 These are deferred per the MVP scope doc — listed here so reviewers know they aren't oversights:
@@ -106,14 +114,13 @@ These are deferred per the MVP scope doc — listed here so reviewers know they 
 
 - Documents: encrypted at rest, only the encrypted blob crosses the wire to the storage driver. Plaintext exists in process memory for the encrypt/decrypt operation only.
 - Selfie video: **never stored**. Per spec, only frame hashes + match score reach the server. Confirm in `liveness/page.tsx` and `kyc.ts`.
-- IP addresses: logged in `card.flashed` payloads. Document this in the privacy policy or strip before commit if your jurisdiction requires it.
+- IP addresses: logged in `card.flashed` payloads. Those entries remain private to the profile owner in the authenticated ledger export; still document this in the privacy policy or strip before commit if your jurisdiction requires it.
 - Right-to-erasure: cascade deletes (`onDelete: "cascade"`) on the `users` table reach profile, verifications, vault docs, ledger events. The encrypted blobs in S3/local require a separate sweep — **TODO: implement `eraseUser(userId)` that walks `vault_docs` and deletes storage refs**.
 
 ## 6. Audit log of this audit
 
 | Date | Reviewer | Finding | Resolution |
 | --- | --- | --- | --- |
-| 2026-05-24 | initial-build | TODO add `(profile_id, prev_hash)` unique constraint | Tracked in §2.3 |
 | 2026-05-24 | initial-build | TODO log scrubber | Tracked in §2.9 |
 | 2026-05-24 | initial-build | TODO eraseUser sweep | Tracked in §5 |
 | 2026-05-24 | initial-build | TODO S3 driver implementation | Tracked in DEPLOY.md hardening |

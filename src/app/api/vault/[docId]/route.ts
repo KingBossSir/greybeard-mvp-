@@ -10,7 +10,7 @@ import { clientIp } from "@/lib/ratelimit";
  * resolves to the actual document.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ docId: string }> }) {
-  await params; // path param is opaque; token is the actual capability
+  const { docId } = await params;
   const url = new URL(req.url);
   const token = url.searchParams.get("t");
   if (!token || token.length < 32 || token.length > 256) {
@@ -22,6 +22,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ docId: s
 
   try {
     const { bytes, meta } = await consumeShare(token);
+    if (meta.id !== docId) {
+      return NextResponse.json({ error: "token_doc_mismatch" }, { status: 403 });
+    }
     return new NextResponse(new Uint8Array(bytes), {
       status: 200,
       headers: {

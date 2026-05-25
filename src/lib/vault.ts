@@ -4,7 +4,7 @@ import { decryptDocument, encryptDocument } from "./crypto";
 import { db } from "./db";
 import { vaultDocs, vaultShares, type VaultDoc } from "./schema";
 import { hashToken, mintToken } from "./crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 
 /**
  * Vault driver: persists the encrypted blob to local FS or S3.
@@ -121,12 +121,19 @@ export async function createShareLink(args: {
 /** Validate + mark a share consumed, return the document bytes. */
 export async function consumeShare(rawToken: string): Promise<{ bytes: Buffer; meta: VaultDoc }> {
   const tokenHash = hashToken(rawToken);
-  const [share] = await db.select().from(vaultShares).where(eq(vaultShares.tokenHash, tokenHash));
-  if (!share) throw new Error("invalid token");
-  if (share.usedAt) throw new Error("token already used");
-  if (share.expiresAt.getTime() < Date.now()) throw new Error("token expired");
-
-  await db.update(vaultShares).set({ usedAt: new Date() }).where(eq(vaultShares.id, share.id));
+  const now = new Date();
+  const [share] = await db
+    .update(vaultShares)
+    .set({ usedAt: now })
+    .where(
+      and(
+        eq(vaultShares.tokenHash, tokenHash),
+        isNull(vaultShares.usedAt),
+        gt(vaultShares.expiresAt, now)
+      )
+    )
+    .returning();
+  if (!share) throw new Error("invalid or expired token");
 
   const [doc] = await db.select().from(vaultDocs).where(eq(vaultDocs.id, share.docId));
   if (!doc) throw new Error("doc missing");

@@ -176,6 +176,7 @@ export const ledgerEvents = pgTable(
   },
   (t) => ({
     profileSeqIdx: index("ledger_profile_seq_idx").on(t.profileId, t.seq),
+    profilePrevHashUq: uniqueIndex("ledger_profile_prev_hash_uq").on(t.profileId, t.prevHash),
   })
 );
 

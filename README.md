@@ -41,6 +41,13 @@ npm run dev          # http://localhost:3000
 npm test
 ```
 
+Install security defaults for this repo are intentionally strict:
+
+- Lifecycle scripts are disabled by default via `.npmrc`.
+- New dependencies should be pinned exactly (`save-exact=true`) rather than floating on a caret range.
+- If a vetted package truly needs a postinstall step, review it first, then run a targeted `npm rebuild <package>` instead of re-enabling scripts globally.
+- Use `npm run audit` after dependency changes; it now fails on high-severity production advisories.
+
 ## Walking through the flow locally
 
 1. `POST /api/verify/start` with `{ "groupContext": "Tema Cocoa · 800MT FOB" }`

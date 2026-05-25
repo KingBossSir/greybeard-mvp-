@@ -35,7 +35,7 @@ export default async function AuditLog() {
 
       <h1 className="mt-6 text-3xl font-semibold tracking-tight">Audit ledger</h1>
       <p className="mt-2 text-[13px] text-[var(--color-ink-3)]">
-        Every event below is signed with ed25519 and chained to the previous hash. Recomputable by any auditor with the public key (see /api/ledger/{profile.id}).
+        Every event below is signed with ed25519 and chained to the previous hash. Exportable from your authenticated ledger endpoint for auditor review.
       </p>
 
       <table className="mono mt-6 w-full text-[11px]">

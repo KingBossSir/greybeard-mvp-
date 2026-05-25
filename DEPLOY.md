@@ -47,7 +47,7 @@
 ## Operational runbooks
 
 ### A user's chain reports `broken`
-1. Open `/api/ledger/<profileId>` — the `chain: broken` field will appear with the broken seq number.
+1. Sign in as the profile owner, then open `/api/ledger/<profileId>` — the `chain: broken` field will appear with the broken seq number.
 2. Check Neon for the row at that seq: did a manual edit happen? (Should be impossible — Postgres has no UPDATE/DELETE grant for the app role.)
 3. If the row was tampered, snapshot the chain, rotate the signing key, and notify the user.
 
