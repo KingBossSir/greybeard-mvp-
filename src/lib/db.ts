@@ -2,19 +2,29 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-function getClient() {
+type DB = ReturnType<typeof drizzle<typeof schema>>;
+
+let _db: DB | null = null;
+function getDb(): DB {
+  if (_db) return _db;
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL missing");
-  return drizzle(neon(url), { schema });
+  if (!url) {
+    // During `next build` page-data collection, env vars may not be present.
+    // Return a stub that throws only when actually used.
+    if (process.env.NEXT_PHASE === "phase-production-build") {
+      return new Proxy({} as DB, {
+        get() { throw new Error("DATABASE_URL accessed during build"); },
+      });
+    }
+    throw new Error("DATABASE_URL missing");
+  }
+  _db = drizzle(neon(url), { schema });
+  return _db;
 }
 
-// Lazy proxy: any property access (.select, .insert, .update, .execute, .transaction)
-// instantiates the client only at request time, not at module import.
-export const db = new Proxy({} as ReturnType<typeof getClient>, {
-  get(_t, prop) {
-    const client = getClient();
-    const value = client[prop as keyof typeof client];
-    return typeof value === "function" ? value.bind(client) : value;
+export const db: DB = new Proxy({} as DB, {
+  get(_t, prop, receiver) {
+    return Reflect.get(getDb(), prop, receiver);
   },
 });
 
