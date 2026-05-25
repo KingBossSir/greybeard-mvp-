@@ -4,7 +4,7 @@ import { sha512 } from "@noble/hashes/sha2";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { computeEventHash } from "@/lib/ledger";
 
-ed.hashes.sha512 = (m: Uint8Array) => sha512(m);
+ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
 
 beforeAll(() => {
   // Pin a known seed for deterministic test signatures.
