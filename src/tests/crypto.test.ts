@@ -25,7 +25,7 @@ describe("envelope encryption", () => {
   it("detects tampered ciphertext", () => {
     const enc = encryptDocument(Buffer.from("secret"));
     const tampered = Buffer.from(enc.ciphertext);
-    tampered[tampered.length - 1] ^= 0xff;
+  tampered[tampered.length - 1]! ^= 0xff;
     expect(() => decryptDocument(tampered, enc.wrappedDek)).toThrow();
   });
 });
