@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash, timingSafeEqual, createHmac } from "node:crypto";
+import { getAuthSecret } from "./env";
 
 /**
  * Envelope encryption: per-document AES-256-GCM Data Encryption Key (DEK),
@@ -75,14 +76,14 @@ function unwrapKey(wrapped: string): Buffer {
  * Store only `hashToken(raw)` server-side; the raw value is the URL secret.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-const TOKEN_PEPPER_ENV = "AUTH_SECRET"; // double-duty: a per-deployment secret.
+const TOKEN_PEPPER_ENV = "AUTH_SECRET/NEXTAUTH_SECRET"; // double-duty: a per-deployment secret.
 
 export function mintToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
 export function hashToken(raw: string): string {
-  const pepper = process.env[TOKEN_PEPPER_ENV];
+  const pepper = getAuthSecret();
   if (!pepper) throw new Error(`${TOKEN_PEPPER_ENV} missing — cannot hash tokens`);
   return createHmac("sha256", pepper).update(raw).digest("hex");
 }

@@ -21,6 +21,7 @@
 1. `vercel link` (or import the repo from the dashboard).
 2. Add **every** variable from `.env.example` in **Project → Settings → Environment Variables**.
    Mark `LEDGER_SIGNING_KEY`, `VAULT_MASTER_KEY`, `AUTH_SECRET`, `WHATSAPP_APP_SECRET`, and `RESEND_API_KEY` as **Encrypted** and **Production only**.
+   The app will also accept `NEXTAUTH_SECRET` and Vercel-style `POSTGRES_URL*` aliases, but standardizing on `AUTH_SECRET` + `DATABASE_URL` keeps the deploy easier to reason about.
 3. Apply DB migrations once:
    ```bash
    DATABASE_URL=... npm run db:migrate
