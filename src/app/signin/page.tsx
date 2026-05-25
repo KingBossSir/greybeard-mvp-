@@ -1,6 +1,8 @@
 import { signIn } from "@/lib/auth";
 import { Button } from "@/components/Button";
 
+export const dynamic = "force-dynamic";
+
 export default function SignIn() {
   async function action(formData: FormData) {
     "use server";
