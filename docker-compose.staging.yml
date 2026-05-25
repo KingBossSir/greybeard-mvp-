@@ -1,0 +1,54 @@
+# Self-hosted staging: app + Postgres + Redis on one machine.
+# Bring up with `npm run staging:up` (reads .env.staging).
+#
+# This is the fallback if you're not using Vercel + Neon. Production and the
+# Vercel staging deploy do NOT use this file.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: greybeard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stagingpass}
+      POSTGRES_DB: greybeard
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"  # bound to loopback only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greybeard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env.staging
+    environment:
+      DATABASE_URL: postgresql://greybeard:${POSTGRES_PASSWORD:-stagingpass}@postgres:5432/greybeard?sslmode=disable
+      GREYBEARD_ENV: staging
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  pgdata:
+  redisdata:

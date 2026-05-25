@@ -1,0 +1,120 @@
+import * as ed from "@noble/ed25519";
+import { sha256 } from "@noble/hashes/sha2";
+import { sha512 } from "@noble/hashes/sha2";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { db } from "./db";
+import { ledgerEvents, type LedgerEvent } from "./schema";
+
+// @noble/ed25519 v2 requires a sync sha512 implementation.
+ed.hashes.sha512 = (m: Uint8Array) => sha512(m);
+
+const GENESIS_HASH = "0".repeat(64);
+
+function getSigningKey(): Uint8Array {
+  const hex = process.env.LEDGER_SIGNING_KEY;
+  if (!hex || !/^[0-9a-fA-F]{64}$/.test(hex)) {
+    throw new Error("LEDGER_SIGNING_KEY must be 32-byte hex (64 chars)");
+  }
+  return hexToBytes(hex);
+}
+
+let cachedPubkey: string | null = null;
+export async function getLedgerPubkeyHex(): Promise<string> {
+  if (cachedPubkey) return cachedPubkey;
+  const pub = await ed.getPublicKeyAsync(getSigningKey());
+  cachedPubkey = bytesToHex(pub);
+  return cachedPubkey;
+}
+
+/**
+ * Canonical JSON: sorted keys, no whitespace, UTF-8.
+ * Required so the hash is reproducible by external auditors.
+ */
+export function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`).join(",")}}`;
+}
+
+export function computeEventHash(prevHash: string, payload: unknown): string {
+  const input = `${prevHash}|${canonicalize(payload)}`;
+  return bytesToHex(sha256(new TextEncoder().encode(input)));
+}
+
+/**
+ * Append an event to the per-profile ledger. Hash chains to the previous event
+ * (or to GENESIS_HASH for the first), and the hash is ed25519-signed.
+ *
+ * Concurrency: serializable transaction prevents two appends racing on the same
+ * profile and forking the chain. (Neon http driver runs each statement as its
+ * own implicit txn; for the MVP we rely on the unique (profile_id, prev_hash)
+ * invariant — see migration. For higher throughput, swap to neon-serverless
+ * pooled driver and wrap in db.transaction.)
+ */
+export async function appendEvent(args: {
+  profileId: string;
+  type: string;
+  payload: Record<string, unknown>;
+}): Promise<LedgerEvent> {
+  const { profileId, type, payload } = args;
+
+  const last = await db
+    .select()
+    .from(ledgerEvents)
+    .where(eq(ledgerEvents.profileId, profileId))
+    .orderBy(desc(ledgerEvents.seq))
+    .limit(1);
+
+  const prevHash = last[0]?.hash ?? GENESIS_HASH;
+  const fullPayload = { type, ...payload, ts: new Date().toISOString() };
+  const hash = computeEventHash(prevHash, fullPayload);
+
+  const sig = await ed.signAsync(hexToBytes(hash), getSigningKey());
+  const pubkey = await getLedgerPubkeyHex();
+
+  const [inserted] = await db
+    .insert(ledgerEvents)
+    .values({
+      profileId,
+      type,
+      payload: fullPayload,
+      hash,
+      prevHash,
+      signature: bytesToHex(sig),
+      pubkey,
+    })
+    .returning();
+
+  if (!inserted) throw new Error("ledger insert failed");
+  return inserted;
+}
+
+/** Verify a single event's signature and chain link. */
+export async function verifyEvent(ev: LedgerEvent, prevHash: string): Promise<boolean> {
+  if (ev.prevHash !== prevHash) return false;
+  const recomputed = computeEventHash(prevHash, ev.payload);
+  if (recomputed !== ev.hash) return false;
+  return ed.verifyAsync(hexToBytes(ev.signature), hexToBytes(ev.hash), hexToBytes(ev.pubkey));
+}
+
+/** Verify an entire chain for a profile, from genesis onward. */
+export async function verifyChain(profileId: string): Promise<{ ok: boolean; brokenAt?: number }> {
+  const events = await db
+    .select()
+    .from(ledgerEvents)
+    .where(eq(ledgerEvents.profileId, profileId))
+    .orderBy(asc(ledgerEvents.seq));
+
+  let prev = GENESIS_HASH;
+  for (const ev of events) {
+    const ok = await verifyEvent(ev, prev);
+    if (!ok) return { ok: false, brokenAt: ev.seq };
+    prev = ev.hash;
+  }
+  return { ok: true };
+}
+
+export { GENESIS_HASH };

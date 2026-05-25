@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "installCommand": "npm ci",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "staging": true
+    }
+  },
+  "github": { "silent": true },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "staging\\.greybeard\\..*" }],
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "X-Greybeard-Env", "value": "staging" }
+      ]
+    }
+  ]
+}

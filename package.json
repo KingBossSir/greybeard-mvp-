@@ -1,0 +1,56 @@
+{
+  "name": "greybeard-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/lib/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/lib/seed.ts",
+    "db:reset": "tsx src/lib/seed.ts reset",
+    "staging:up": "docker compose -f docker-compose.staging.yml up -d",
+    "staging:down": "docker compose -f docker-compose.staging.yml down -v",
+    "staging:logs": "docker compose -f docker-compose.staging.yml logs -f app",
+    "audit": "npm audit --omit=dev"
+  },
+  "dependencies": {
+    "@auth/drizzle-adapter": "^1.7.4",
+    "@neondatabase/serverless": "^0.10.4",
+    "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "^1.7.1",
+    "@upstash/ratelimit": "^2.0.5",
+    "@upstash/redis": "^1.34.3",
+    "drizzle-orm": "^0.38.4",
+    "next": "15.1.6",
+    "next-auth": "5.0.0-beta.25",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "resend": "^4.1.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "drizzle-kit": "^0.30.2",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "15.1.6",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #f7f6f1;
+  --color-bg-2: #efede5;
+  --color-paper: #ffffff;
+  --color-paper-2: #fafaf7;
+  --color-line: #e6e4dc;
+  --color-line-strong: #d6d3c8;
+
+  --color-ink: #0c0d0e;
+  --color-ink-2: #1d2024;
+  --color-ink-3: #4a4f57;
+  --color-ink-4: #8a8e95;
+  --color-ink-5: #b8b9b3;
+
+  --color-signal: #0f7b4a;
+  --color-signal-soft: #e3f0e6;
+  --color-signal-tint: #f0f6f1;
+  --color-signal-ink: #0a4a2e;
+
+  --color-warn: #b94e2c;
+  --color-warn-soft: #f4e4dc;
+
+  --radius-card: 14px;
+  --radius-sm: 10px;
+
+  --font-sans: "Geist", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+}
+
+html, body { background: var(--color-bg); color: var(--color-ink); }
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background-image: radial-gradient(circle at 80% 0%, rgba(15, 123, 74, 0.025) 0%, transparent 40%);
+  min-height: 100vh;
+}
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+::selection { background: var(--color-ink); color: var(--color-paper); }

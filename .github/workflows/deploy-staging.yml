@@ -1,0 +1,86 @@
+name: Deploy → Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false  # don't cancel a half-finished migration
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm" }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+
+  migrate:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm" }
+      - run: npm ci
+      - name: Apply migrations to staging Neon branch
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: npm run db:migrate
+
+  deploy:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm" }
+      - run: npm i -g vercel@latest
+      - name: Pull Vercel staging env
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Build
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$url" >> $GITHUB_OUTPUT
+          echo "Deployed: $url"
+      - name: Alias to staging.greybeard.app
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel alias set "${{ steps.deploy.outputs.url }}" staging.greybeard.app --token=$VERCEL_TOKEN
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS "https://staging.greybeard.app/api/health" | grep -q '"ok":true'; then
+              echo "healthy"; exit 0
+            fi
+            echo "attempt $i failed, retrying…"; sleep 5
+          done
+          echo "staging unhealthy after deploy"; exit 1
+      - name: Reseed staging data
+        env:
+          OPS: ${{ secrets.STAGING_OPS_TOKEN }}
+        run: |
+          curl -fsS -X POST "https://staging.greybeard.app/api/staging/seed?reset=1" \
+            -H "x-ops-token: $OPS"
