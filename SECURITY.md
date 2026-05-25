@@ -101,6 +101,13 @@ Repo-level npm defaults are hardened in `.npmrc`:
 
 If a reviewed package genuinely needs a postinstall hook, run a targeted `npm rebuild <package>` after review instead of globally re-enabling install scripts.
 
+Current npm audit status for this repo:
+
+- Critical and high-severity advisories were cleared by upgrading `next`, `next-auth`, `drizzle-orm`, `drizzle-kit`, and `postcss`.
+- Remaining production finding: `next` currently bundles `postcss@8.4.31`, which still triggers GHSA-qx2v-qp2m-jg93 in `npm audit` even on the latest published `next` line checked during this audit.
+- Remaining dev-only finding: latest `drizzle-kit` still pulls `@esbuild-kit/esm-loader` / `@esbuild-kit/core-utils`, which in turn retain the older `esbuild` advisory path.
+- Treat both as tracked upstream dependencies and re-check on every `next` / `drizzle-kit` release before public beta.
+
 ## 4. Out-of-scope (intentional)
 
 These are deferred per the MVP scope doc — listed here so reviewers know they aren't oversights:
@@ -121,6 +128,8 @@ These are deferred per the MVP scope doc — listed here so reviewers know they 
 
 | Date | Reviewer | Finding | Resolution |
 | --- | --- | --- | --- |
+| 2026-05-25 | codex | Upgraded direct dependencies to clear critical/high npm advisories | Landed in `package.json` + `package-lock.json` |
+| 2026-05-25 | codex | Residual moderate npm audit findings remain in latest upstream `next` / `drizzle-kit` | Tracked in §3 pending upstream releases |
 | 2026-05-24 | initial-build | TODO log scrubber | Tracked in §2.9 |
 | 2026-05-24 | initial-build | TODO eraseUser sweep | Tracked in §5 |
 | 2026-05-24 | initial-build | TODO S3 driver implementation | Tracked in DEPLOY.md hardening |
