@@ -26,7 +26,8 @@ export default async function Settings() {
       <section className="mt-6 rounded-[14px] border border-[var(--color-line)] bg-[var(--color-paper)] p-5">
         <h2 className="text-[14px] font-medium">Account</h2>
         <dl className="mono mt-3 text-[12px] grid grid-cols-[140px_1fr] gap-y-2">
-          <dt className="text-[var(--color-ink-4)]">email</dt><dd>{session.user.email}</dd>
+          <dt className="text-[var(--color-ink-4)]">name</dt><dd>{session.user.name ?? "—"}</dd>
+          <dt className="text-[var(--color-ink-4)]">access</dt><dd>local browser session</dd>
           <dt className="text-[var(--color-ink-4)]">handle</dt><dd>{profile?.handle ?? "—"}</dd>
           <dt className="text-[var(--color-ink-4)]">tier</dt><dd>{profile?.tier}</dd>
         </dl>
@@ -41,7 +42,7 @@ export default async function Settings() {
       </section>
 
       <form action={logout} className="mt-6">
-        <Button variant="outline">Sign out</Button>
+        <Button variant="outline">Clear local access</Button>
       </form>
     </main>
   );

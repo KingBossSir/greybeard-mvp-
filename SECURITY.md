@@ -12,7 +12,6 @@ Status: **internal beta**. This document is the audit checklist for going to pub
 | Neon Postgres TLS + at-rest encryption | Industry standard; AES-256, AWS-backed. |
 | WhatsApp Cloud API signing | Meta signs every webhook with HMAC-SHA-256 using your app secret. |
 | The single ledger signing key | High-value secret. Rotate quarterly; publish old + new pubkeys. |
-| Resend / DKIM | Magic links are bearer tokens — DKIM/SPF/DMARC prevent spoofing. |
 | Trulioo / ComplyAdvantage (when live) | We pass them PII. Vendor SOC 2 review required before flip. |
 
 ## 2. STRIDE per surface
@@ -54,9 +53,10 @@ Status: **internal beta**. This document is the audit checklist for going to pub
 
 ### 2.5 Auth (NextAuth v5)
 
-- **Magic links only.** No passwords. 10-min expiry. Single-use enforced by NextAuth.
-- **Database sessions** (not JWT) → revocation is just `DELETE FROM sessions`.
-- **Per-deployment `AUTH_SECRET`** doubles as the token pepper for invite/share hashing (see `crypto.ts:hashToken`). Rotation invalidates all outstanding bearer tokens — design choice, document it.
+- **Local browser access only.** No passwords and no email delivery path in this build. Creating access on `/signin` provisions a user + profile and stores a signed session cookie in the browser.
+- **JWT sessions** keep the auth surface small while email/recovery is intentionally disabled.
+- **Per-deployment `AUTH_SECRET`** signs auth cookies and doubles as the token pepper for invite/share hashing (see `crypto.ts:hashToken`). Rotation invalidates all outstanding bearer tokens — design choice, document it.
+- **Tradeoff:** this beta does not have cross-device recovery. If a user clears their browser session, the access cookie is gone.
 - **CSP / `frame-ancestors 'none'`** prevents login-form embedding.
 
 ### 2.6 Headers (middleware + `next.config.ts`)
@@ -77,7 +77,7 @@ Status: **internal beta**. This document is the audit checklist for going to pub
 
 ### 2.9 Logging
 
-- Structured logs only at `info` level avoid PII. Mock providers `console.warn` magic links in dev — this branch is gated by `RESEND_API_KEY` being unset.
+- Structured logs only at `info` level avoid PII.
 - **TODO before prod:** wire OpenTelemetry exporter and add a log-scrubber middleware that strips `email`, `documentBase64`, `frameHashes`, `Authorization`, `Cookie`.
 
 ---

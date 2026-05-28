@@ -38,7 +38,7 @@ export default function Landing() {
           href="/signin"
           className="rounded-[var(--radius-sm)] bg-[var(--color-ink)] px-5 py-3 text-sm font-medium text-white"
         >
-          Sign in
+          Open app
         </Link>
         <Link
           href="/dashboard"

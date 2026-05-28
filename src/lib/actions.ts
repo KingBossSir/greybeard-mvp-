@@ -49,7 +49,7 @@ async function requireProfile(token: string) {
       .values({
         userId: session.user.id,
         handle,
-        displayName: session.user.name ?? session.user.email ?? "Pending",
+        displayName: session.user.name ?? "Pending",
       })
       .returning();
     profile = inserted[0]!;

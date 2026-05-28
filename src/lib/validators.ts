@@ -5,7 +5,6 @@ const E164 = z.string().regex(/^\+[1-9]\d{6,14}$/);
 
 export const StartVerificationSchema = z.object({
   inviteToken: z.string().min(32).max(128),
-  email: z.string().email().max(254),
 });
 
 export const IdentitySubmitSchema = z.object({

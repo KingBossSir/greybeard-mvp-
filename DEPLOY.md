@@ -5,11 +5,9 @@
 1. **Neon Postgres**
    - Create a project at https://neon.tech.
    - Copy the *pooled* connection string (`?sslmode=require&pgbouncer=true`).
-2. **Resend** (email)
-   - Sign up at https://resend.com, verify your sending domain (or use `onboarding@resend.dev` for the beta), grab an API key.
-3. **Upstash Redis** (rate limiting)
+2. **Upstash Redis** (rate limiting)
    - Create a free Redis DB; grab `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. Optional for dev — required for prod.
-4. **Generate secrets locally** (don't commit):
+3. **Generate secrets locally** (don't commit):
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"  # AUTH_SECRET
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"     # LEDGER_SIGNING_KEY
@@ -20,7 +18,7 @@
 
 1. `vercel link` (or import the repo from the dashboard).
 2. Add **every** variable from `.env.example` in **Project → Settings → Environment Variables**.
-   Mark `LEDGER_SIGNING_KEY`, `VAULT_MASTER_KEY`, `AUTH_SECRET`, `WHATSAPP_APP_SECRET`, and `RESEND_API_KEY` as **Encrypted** and **Production only**.
+   Mark `LEDGER_SIGNING_KEY`, `VAULT_MASTER_KEY`, `AUTH_SECRET`, and `WHATSAPP_APP_SECRET` as **Encrypted** and **Production only**.
    The app will also accept `NEXTAUTH_SECRET` and Vercel-style `POSTGRES_URL*` aliases, but standardizing on `AUTH_SECRET` + `DATABASE_URL` keeps the deploy easier to reason about.
    Deploys use npm's built-in `min-release-age=7`, so versions published within the last 7 days are rejected during `npm ci`.
 3. Apply DB migrations once:

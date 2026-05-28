@@ -9,7 +9,7 @@ This is the deployable beta scaffold. The trust-layer wedge (5-step onboarding, 
 - **Next.js 15** (App Router, RSC, Server Actions) + **React 19** + **TypeScript**
 - **Tailwind v4** for styling
 - **Neon Postgres** + **Drizzle ORM** + signed-event ledger
-- **NextAuth v5** (database sessions, magic-link via Resend)
+- **NextAuth v5** (JWT sessions, local browser access)
 - **@noble/ed25519** + **@noble/hashes** for the audit ledger
 - **Node crypto** (AES-256-GCM envelope encryption) for the vault
 - **Upstash Ratelimit** (with in-memory fallback) for abuse control
@@ -28,7 +28,6 @@ node -e "console.log('AUTH_SECRET=' + require('crypto').randomBytes(32).toString
 node -e "console.log('LEDGER_SIGNING_KEY=' + require('crypto').randomBytes(32).toString('hex'))" >> .env
 node -e "console.log('VAULT_MASTER_KEY=' + require('crypto').randomBytes(32).toString('hex'))" >> .env
 # Set DATABASE_URL to your Neon connection string.
-# Set RESEND_API_KEY (or leave blank — magic links log to stdout in dev).
 
 # 3. Migrate
 npm run db:generate
@@ -93,7 +92,7 @@ src/
 │  ├─ score.ts                  # trust score composition
 │  ├─ ratelimit.ts              # Upstash + memory fallback
 │  ├─ validators.ts             # zod schemas — input validation at the boundary
-│  ├─ auth.ts                   # NextAuth v5 (magic-link)
+│  ├─ auth.ts                   # NextAuth v5 (local browser access)
 │  └─ actions.ts                # Server Actions for each verification step
 └─ tests/                        # vitest — ledger, signing, score, geo, crypto
 ```
