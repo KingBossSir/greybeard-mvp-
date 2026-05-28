@@ -22,6 +22,7 @@
 2. Add **every** variable from `.env.example` in **Project → Settings → Environment Variables**.
    Mark `LEDGER_SIGNING_KEY`, `VAULT_MASTER_KEY`, `AUTH_SECRET`, `WHATSAPP_APP_SECRET`, and `RESEND_API_KEY` as **Encrypted** and **Production only**.
    The app will also accept `NEXTAUTH_SECRET` and Vercel-style `POSTGRES_URL*` aliases, but standardizing on `AUTH_SECRET` + `DATABASE_URL` keeps the deploy easier to reason about.
+   Deploys use npm's built-in `min-release-age=7`, so versions published within the last 7 days are rejected during `npm ci`.
 3. Apply DB migrations once:
    ```bash
    DATABASE_URL=... npm run db:migrate

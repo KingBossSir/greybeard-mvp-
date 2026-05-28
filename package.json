@@ -2,6 +2,7 @@
   "name": "greybeard-mvp",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.13.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -51,6 +52,7 @@
     "vitest": "^3.0.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.0.0",
+    "npm": ">=11.11.0"
   }
 }

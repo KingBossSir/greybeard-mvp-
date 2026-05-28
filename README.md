@@ -45,8 +45,10 @@ Install security defaults for this repo are intentionally strict:
 
 - Lifecycle scripts are disabled by default via `.npmrc`.
 - New dependencies should be pinned exactly (`save-exact=true`) rather than floating on a caret range.
+- npm enforces a 7-day quarantine on newly published package versions (`min-release-age=7`) before they can be installed or deployed.
 - If a vetted package truly needs a postinstall step, review it first, then run a targeted `npm rebuild <package>` instead of re-enabling scripts globally.
 - Use `npm run audit` after dependency changes; it now fails on high-severity production advisories.
+- The project now requires npm `11.11+` so the minimum-release-age control is actually honored in CI and Vercel.
 
 ## Walking through the flow locally
 
