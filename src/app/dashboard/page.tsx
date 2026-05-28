@@ -1,23 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ledgerEvents, profiles } from "@/lib/schema";
+import { getAccessProfile, getRecentLedgerEvents } from "@/lib/local-access";
 import { computeScore } from "@/lib/score";
 
 export default async function Dashboard() {
   const session = await auth();
   if (!session?.user?.id) redirect("/signin");
-  const [profile] = await db.select().from(profiles).where(eq(profiles.userId, session.user.id));
-  if (!profile) redirect("/");
-
-  const events = await db
-    .select()
-    .from(ledgerEvents)
-    .where(eq(ledgerEvents.profileId, profile.id))
-    .orderBy(desc(ledgerEvents.seq))
-    .limit(20);
+  const profile = await getAccessProfile({
+    id: session.user.id,
+    name: session.user.name,
+  });
+  const events = await getRecentLedgerEvents(profile.id, 20);
 
   const sc = computeScore({
     kycComplete: true,
@@ -61,6 +55,11 @@ export default async function Dashboard() {
           <p className="mt-1 text-[14px] text-[var(--color-ink-3)]">
             {profile.company ?? "—"} · {profile.country ?? "—"} · since {profile.liveAt?.getFullYear() ?? 2026}
           </p>
+          {profile.isFallback && (
+            <p className="mt-3 max-w-xl text-[12px] text-[var(--color-ink-4)]">
+              Running in local-access mode. Session access is working, but database-backed profile data is temporarily unavailable.
+            </p>
+          )}
         </div>
 
         <div className="w-[280px] rounded-[14px] border border-[var(--color-line)] bg-[var(--color-paper)] p-4">

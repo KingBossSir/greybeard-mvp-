@@ -41,18 +41,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
         const displayName = generateDisplayName(parsed.data.displayName || undefined);
         const userId = crypto.randomUUID();
 
-        await db.insert(users).values({
-          id: userId,
-          name: displayName,
-          email: null,
-          emailVerified: null,
-        });
+        try {
+          await db.insert(users).values({
+            id: userId,
+            name: displayName,
+            email: null,
+            emailVerified: null,
+          });
 
-        await db.insert(profiles).values({
-          userId,
-          handle: generateHandle(),
-          displayName,
-        });
+          await db.insert(profiles).values({
+            userId,
+            handle: generateHandle(),
+            displayName,
+          });
+        } catch (error) {
+          console.warn("[auth] local access proceeding without database persistence", error);
+        }
 
         return {
           id: userId,

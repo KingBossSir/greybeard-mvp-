@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ledgerEvents, profiles } from "@/lib/schema";
+import { getAccessProfile, getRecentLedgerEvents } from "@/lib/local-access";
 import { IosFrame } from "@/components/IosFrame";
 import { ProfileCard } from "@/components/ProfileCard";
 import { Button } from "@/components/Button";
@@ -12,15 +10,11 @@ export default async function Account() {
   const session = await auth();
   if (!session?.user?.id) redirect("/signin");
 
-  const [profile] = await db.select().from(profiles).where(eq(profiles.userId, session.user.id));
-  if (!profile) redirect("/");
-
-  const events = await db
-    .select()
-    .from(ledgerEvents)
-    .where(eq(ledgerEvents.profileId, profile.id))
-    .orderBy(desc(ledgerEvents.seq))
-    .limit(8);
+  const profile = await getAccessProfile({
+    id: session.user.id,
+    name: session.user.name,
+  });
+  const events = await getRecentLedgerEvents(profile.id, 8);
 
   const initials = profile.displayName.split(/\s+/).map((s) => s[0]?.toUpperCase()).slice(0, 2).join("");
 
@@ -44,6 +38,12 @@ export default async function Account() {
           dealsDisputed={profile.dealsDisputed}
           credentials={["KYC complete", "Bank linked", "BO resolved"]}
         />
+
+        {profile.isFallback && (
+          <div className="mt-4 rounded-[12px] border border-[var(--color-line)] bg-[var(--color-paper)] p-4 text-[12px] text-[var(--color-ink-3)]">
+            Local-access mode is active. Your browser session is working, but the backing database is unavailable, so profile history and deal data are temporarily limited.
+          </div>
+        )}
 
         <div className="mt-5 rounded-[12px] border border-[var(--color-line)] bg-[var(--color-paper)] p-4">
           <div className="flex items-baseline justify-between">

@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
 import { auth, signOut } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { profiles } from "@/lib/schema";
+import { getAccessProfile } from "@/lib/local-access";
 import { Button } from "@/components/Button";
 import { getLedgerPubkeyHex } from "@/lib/ledger";
 
 export default async function Settings() {
   const session = await auth();
   if (!session?.user?.id) redirect("/signin");
-  const [profile] = await db.select().from(profiles).where(eq(profiles.userId, session.user.id));
+  const profile = await getAccessProfile({
+    id: session.user.id,
+    name: session.user.name,
+  });
   const pubkey = await getLedgerPubkeyHex();
 
   async function logout() {
@@ -27,7 +28,7 @@ export default async function Settings() {
         <h2 className="text-[14px] font-medium">Account</h2>
         <dl className="mono mt-3 text-[12px] grid grid-cols-[140px_1fr] gap-y-2">
           <dt className="text-[var(--color-ink-4)]">name</dt><dd>{session.user.name ?? "—"}</dd>
-          <dt className="text-[var(--color-ink-4)]">access</dt><dd>local browser session</dd>
+          <dt className="text-[var(--color-ink-4)]">access</dt><dd>{profile.isFallback ? "local browser session (fallback mode)" : "local browser session"}</dd>
           <dt className="text-[var(--color-ink-4)]">handle</dt><dd>{profile?.handle ?? "—"}</dd>
           <dt className="text-[var(--color-ink-4)]">tier</dt><dd>{profile?.tier}</dd>
         </dl>

@@ -1,24 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ledgerEvents, profiles } from "@/lib/schema";
+import { getAccessProfile, getAuditLedgerEvents } from "@/lib/local-access";
 import { verifyChain } from "@/lib/ledger";
 
 export default async function AuditLog() {
   const session = await auth();
   if (!session?.user?.id) redirect("/signin");
-  const [profile] = await db.select().from(profiles).where(eq(profiles.userId, session.user.id));
-  if (!profile) redirect("/");
-
-  const events = await db
-    .select()
-    .from(ledgerEvents)
-    .where(eq(ledgerEvents.profileId, profile.id))
-    .orderBy(asc(ledgerEvents.seq));
-
-  const chain = await verifyChain(profile.id);
+  const profile = await getAccessProfile({
+    id: session.user.id,
+    name: session.user.name,
+  });
+  const events = await getAuditLedgerEvents(profile.id);
+  const chain = profile.isFallback ? null : await verifyChain(profile.id);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
@@ -26,10 +20,10 @@ export default async function AuditLog() {
         <Link href="/dashboard" className="text-[13px] text-[var(--color-ink-3)]">← Dashboard</Link>
         <span
           className={`mono text-[11px] uppercase tracking-wider ${
-            chain.ok ? "text-[var(--color-signal)]" : "text-[var(--color-warn)]"
+            !chain || chain.ok ? "text-[var(--color-signal)]" : "text-[var(--color-warn)]"
           }`}
         >
-          chain {chain.ok ? "verified" : `broken @ ${chain.brokenAt}`}
+          {chain ? `chain ${chain.ok ? "verified" : `broken @ ${chain.brokenAt}`}` : "local mode"}
         </span>
       </div>
 
@@ -37,6 +31,11 @@ export default async function AuditLog() {
       <p className="mt-2 text-[13px] text-[var(--color-ink-3)]">
         Every event below is signed with ed25519 and chained to the previous hash. Exportable from your authenticated ledger endpoint for auditor review.
       </p>
+      {profile.isFallback && (
+        <p className="mt-3 text-[12px] text-[var(--color-ink-4)]">
+          The database is currently unavailable, so audit events cannot be loaded for this browser-only session yet.
+        </p>
+      )}
 
       <table className="mono mt-6 w-full text-[11px]">
         <thead className="text-left text-[var(--color-ink-4)] uppercase tracking-wider">
