@@ -1,11 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+function createNonce() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary);
+}
+
 /**
  * Per-request CSP nonce + tight CSP. Applied to all HTML responses.
  * The nonce is forwarded to React via the x-csp-nonce header (read in layout).
  */
 export function middleware(req: NextRequest) {
-  const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64");
+  const nonce = createNonce();
 
   // Strict CSP. No 'unsafe-inline', no 'unsafe-eval'. Nonce gates inline scripts.
   const csp = [
