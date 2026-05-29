@@ -1,4 +1,4 @@
-import { signIn } from "@/lib/auth";
+import { createLocalAccess } from "@/lib/auth";
 import { Button } from "@/components/Button";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -12,7 +12,7 @@ export default async function SignIn() {
   async function action(formData: FormData) {
     "use server";
     const displayName = String(formData.get("displayName") ?? "");
-    await signIn("credentials", { displayName, redirectTo: "/account" });
+    await createLocalAccess(displayName, "/account");
   }
 
   return (

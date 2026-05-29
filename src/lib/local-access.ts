@@ -1,6 +1,6 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { db } from "./db";
-import { ledgerEvents, profiles, type LedgerEvent, type Profile } from "./schema";
+import { ledgerEvents, profiles, users, type LedgerEvent, type Profile } from "./schema";
 
 type SessionUserLike = {
   id: string;
@@ -32,11 +32,34 @@ export function fallbackProfile(user: SessionUserLike): AccessProfile {
   };
 }
 
+async function hydrateSessionUser(user: SessionUserLike) {
+  const displayName = user.name ?? "Local Operator";
+
+  await db.insert(users).values({
+    id: user.id,
+    name: displayName,
+    email: null,
+    emailVerified: null,
+  }).onConflictDoNothing();
+
+  await db.insert(profiles).values({
+    userId: user.id,
+    handle: fallbackHandle(user.id),
+    displayName,
+  }).onConflictDoNothing();
+}
+
 export async function getAccessProfile(user: SessionUserLike): Promise<AccessProfile> {
   try {
     const [profile] = await db.select().from(profiles).where(eq(profiles.userId, user.id));
     if (profile) {
       return { ...profile, isFallback: false };
+    }
+
+    await hydrateSessionUser(user);
+    const [hydrated] = await db.select().from(profiles).where(eq(profiles.userId, user.id));
+    if (hydrated) {
+      return { ...hydrated, isFallback: false };
     }
   } catch (error) {
     console.warn("[access] falling back to local profile", error);

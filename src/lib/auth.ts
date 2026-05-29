@@ -1,11 +1,13 @@
-import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { z } from "zod";
-import { db } from "./db";
-import { profiles, users } from "./schema";
 import { getAuthSecret } from "./env";
 
-const authSecret = getAuthSecret();
+const SESSION_COOKIE = "greybeard.session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const authSecret = getAuthSecret() ?? "greybeard-dev-fallback-secret";
+
 const LocalAccessSchema = z.object({
   displayName: z
     .string()
@@ -16,77 +18,104 @@ const LocalAccessSchema = z.object({
     .or(z.literal("")),
 });
 
+const SessionPayloadSchema = z.object({
+  id: z.string().min(16).max(128),
+  name: z.string().min(1).max(120).optional(),
+  email: z.string().email().optional(),
+});
+
+type SessionPayload = z.infer<typeof SessionPayloadSchema>;
+
 function generateDisplayName(input?: string) {
   if (input) return input;
   return `Operator ${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
-function generateHandle() {
-  return `gb_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+function base64urlEncode(input: string) {
+  return Buffer.from(input, "utf8").toString("base64url");
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
-  secret: authSecret,
-  trustHost: true,
-  session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 30 },
-  providers: [
-    Credentials({
-      credentials: {
-        displayName: { label: "Display name", type: "text" },
-      },
-      async authorize(rawCredentials) {
-        const parsed = LocalAccessSchema.safeParse(rawCredentials);
-        if (!parsed.success) return null;
+function base64urlDecode(input: string) {
+  return Buffer.from(input, "base64url").toString("utf8");
+}
 
-        const displayName = generateDisplayName(parsed.data.displayName || undefined);
-        const userId = crypto.randomUUID();
+function signValue(value: string) {
+  return createHmac("sha256", authSecret).update(value).digest("base64url");
+}
 
-        try {
-          await db.insert(users).values({
-            id: userId,
-            name: displayName,
-            email: null,
-            emailVerified: null,
-          });
+function serializeSession(payload: SessionPayload) {
+  const body = base64urlEncode(JSON.stringify(payload));
+  const sig = signValue(body);
+  return `${body}.${sig}`;
+}
 
-          await db.insert(profiles).values({
-            userId,
-            handle: generateHandle(),
-            displayName,
-          });
-        } catch (error) {
-          console.warn("[auth] local access proceeding without database persistence", error);
-        }
+function parseSessionCookie(raw?: string | null): SessionPayload | null {
+  if (!raw) return null;
+  const [body, providedSig] = raw.split(".");
+  if (!body || !providedSig) return null;
 
-        return {
-          id: userId,
-          name: displayName,
-          email: null,
-        };
-      },
-    }),
-  ],
-  pages: { signIn: "/signin" },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.name = user.name;
-        token.email = user.email ?? undefined;
-      }
-      return token;
+  const expectedSig = signValue(body);
+  const provided = Buffer.from(providedSig);
+  const expected = Buffer.from(expectedSig);
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    return null;
+  }
+
+  try {
+    return SessionPayloadSchema.parse(JSON.parse(base64urlDecode(body)));
+  } catch {
+    return null;
+  }
+}
+
+export async function auth() {
+  const cookieStore = await cookies();
+  const payload = parseSessionCookie(cookieStore.get(SESSION_COOKIE)?.value);
+  if (!payload) return null;
+
+  return {
+    user: {
+      id: payload.id,
+      name: payload.name,
+      email: payload.email,
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = String(token.id ?? token.sub ?? "");
-        session.user.name = token.name;
-        if (typeof token.email === "string") {
-          session.user.email = token.email;
-        } else {
-          delete (session.user as { email?: string }).email;
-        }
-      }
-      return session;
-    },
-  },
-}));
+  };
+}
+
+export async function createLocalAccess(displayNameInput: string, redirectTo = "/account") {
+  const parsed = LocalAccessSchema.safeParse({ displayName: displayNameInput });
+  if (!parsed.success) {
+    redirect("/signin");
+  }
+
+  const displayName = generateDisplayName(parsed.data.displayName || undefined);
+  const payload: SessionPayload = {
+    id: crypto.randomUUID(),
+    name: displayName,
+  };
+
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, serializeSession(payload), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+
+  redirect(redirectTo);
+}
+
+export async function signOut(options?: { redirectTo?: string }) {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+  });
+
+  redirect(options?.redirectTo ?? "/");
+}
