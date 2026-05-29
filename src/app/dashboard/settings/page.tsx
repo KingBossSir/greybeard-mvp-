@@ -19,6 +19,7 @@ export default async function Settings({
     id: session.user.id,
     name: session.user.name,
   });
+  if (!profile.isLive && !profile.isFallback) redirect("/get-started");
   const pubkey = await getLedgerPubkeyHex();
 
   async function logout() {

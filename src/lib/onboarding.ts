@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "./db";
-import { hashToken } from "./crypto";
+import { hashToken, mintToken } from "./crypto";
 import { invites, profiles, verifications, type Invite, type Profile } from "./schema";
 
 export const VERIFICATION_STEPS = [
@@ -131,4 +131,22 @@ export function credentialBadges(summary: VerificationSummary) {
   if (summary.screeningOk) badges.push("Screening clear");
   if (summary.awaitingReview) badges.push("Compliance review");
   return badges.length ? badges : ["Onboarding in progress"];
+}
+
+export async function issueSelfOnboardingInvite(args: {
+  userId: string;
+  profileId?: string | null;
+  context?: string;
+}) {
+  const token = mintToken();
+  await db.insert(invites).values({
+    tokenHash: hashToken(token),
+    inviterProfileId: args.profileId ?? null,
+    groupContext: args.context ?? "GreyBeard onboarding",
+    inviteePhone: null,
+    consumedBy: args.userId,
+    consumedAt: new Date(),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+  return token;
 }

@@ -12,6 +12,7 @@ export default async function Dashboard() {
     id: session.user.id,
     name: session.user.name,
   });
+  if (!profile.isLive && !profile.isFallback) redirect("/get-started");
   const events = await getRecentLedgerEvents(profile.id, 20);
   const summary = profile.isFallback ? null : await getVerificationSummary(profile.id);
   const daysOnPlatform = Math.max(0, Math.floor((Date.now() - profile.createdAt.getTime()) / (1000 * 60 * 60 * 24)));

@@ -8,16 +8,6 @@ const SESSION_COOKIE = "greybeard.session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const authSecret = getAuthSecret() ?? "greybeard-dev-fallback-secret";
 
-const LocalAccessSchema = z.object({
-  displayName: z
-    .string()
-    .trim()
-    .min(2)
-    .max(80)
-    .optional()
-    .or(z.literal("")),
-});
-
 const SessionPayloadSchema = z.object({
   id: z.string().min(16).max(128),
   name: z.string().min(1).max(120).optional(),
@@ -27,7 +17,8 @@ const SessionPayloadSchema = z.object({
 type SessionPayload = z.infer<typeof SessionPayloadSchema>;
 
 function generateDisplayName(input?: string) {
-  if (input) return input;
+  const normalized = input?.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (normalized) return normalized;
   return `Operator ${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
@@ -94,12 +85,7 @@ export async function auth() {
 }
 
 export async function createLocalAccess(displayNameInput: string, redirectTo = "/account") {
-  const parsed = LocalAccessSchema.safeParse({ displayName: displayNameInput });
-  if (!parsed.success) {
-    redirect("/signin");
-  }
-
-  const displayName = generateDisplayName(parsed.data.displayName || undefined);
+  const displayName = generateDisplayName(displayNameInput);
   const payload: SessionPayload = {
     id: crypto.randomUUID(),
     name: displayName,

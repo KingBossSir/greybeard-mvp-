@@ -11,6 +11,7 @@ export default async function AuditLog() {
     id: session.user.id,
     name: session.user.name,
   });
+  if (!profile.isLive && !profile.isFallback) redirect("/get-started");
   const events = await getAuditLedgerEvents(profile.id);
   const chain = profile.isFallback ? null : await verifyChain(profile.id);
 

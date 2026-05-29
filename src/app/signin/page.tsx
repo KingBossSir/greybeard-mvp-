@@ -12,7 +12,7 @@ export default async function SignIn({
 }) {
   const session = await auth();
   const sp = await searchParams;
-  const nextPath = typeof sp.next === "string" && sp.next.startsWith("/") ? sp.next : "/account";
+  const nextPath = typeof sp.next === "string" && sp.next.startsWith("/") ? sp.next : "/get-started";
   if (session?.user?.id) redirect(nextPath);
 
   async function action(formData: FormData) {
@@ -25,7 +25,7 @@ export default async function SignIn({
     <main className="mx-auto max-w-md px-6 py-24">
       <h1 className="text-2xl font-semibold tracking-tight">Open GreyBeard</h1>
       <p className="mt-2 text-[13px] text-[var(--color-ink-3)]">
-        No email setup required. This creates local access for this browser and drops you straight into GreyBeard.
+        No email setup required. This creates local access for this browser, then takes you into the onboarding flow before the dashboard.
       </p>
       <form action={action} className="mt-6 space-y-3">
         <input
@@ -38,7 +38,7 @@ export default async function SignIn({
         <Button type="submit" className="w-full">Create local access</Button>
       </form>
       <p className="mt-3 text-[12px] text-[var(--color-ink-4)]">
-        If you sign out, this browser session is cleared. There is no email recovery flow in this build.
+        Leave it blank and we will generate an alias. If you sign out, this browser session is cleared.
       </p>
     </main>
   );

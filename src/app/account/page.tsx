@@ -15,6 +15,7 @@ export default async function Account() {
     id: session.user.id,
     name: session.user.name,
   });
+  if (!profile.isLive && !profile.isFallback) redirect("/get-started");
   const events = await getRecentLedgerEvents(profile.id, 8);
   const summary = profile.isFallback ? null : await getVerificationSummary(profile.id);
 
