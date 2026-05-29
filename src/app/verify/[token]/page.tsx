@@ -1,16 +1,30 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { invites } from "@/lib/schema";
-import { hashToken } from "@/lib/crypto";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { getOnboardingState, getOnboardingTargetPath } from "@/lib/onboarding";
 import { IosFrame } from "@/components/IosFrame";
 import { Button } from "@/components/Button";
 
 export default async function Welcome({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const [inv] = await db.select().from(invites).where(eq(invites.tokenHash, hashToken(token)));
-  if (!inv || inv.expiresAt.getTime() < Date.now()) notFound();
+  const session = await auth();
+  const state = await getOnboardingState(token, session?.user?.id);
+  if (!state) notFound();
+
+  if (state.boundToOtherUser) {
+    redirect("/signin");
+  }
+
+  const ctaHref = state.requiresAccess
+    ? `/signin?next=${encodeURIComponent(`/verify/${token}`)}`
+    : getOnboardingTargetPath(token, state.summary.nextStep, state.isLive);
+  const ctaLabel = state.requiresAccess
+    ? "Create local access"
+    : state.isLive
+      ? "Open verified profile"
+      : state.summary.completedCount > 0
+        ? "Resume onboarding"
+        : "Begin";
 
   return (
     <IosFrame>
@@ -24,11 +38,18 @@ export default async function Welcome({ params }: { params: Promise<{ token: str
       <div className="px-5">
         <div className="h-9 w-9 rounded-[10px] bg-[var(--color-ink)] flex items-center justify-center text-white font-medium">g</div>
         <h1 className="mt-4 text-[26px] font-semibold leading-[1.15] tracking-tight text-[var(--color-ink)]">
-          Hi. Verify your identity.
+          {state.requiresAccess ? "Open your secure invite." : "Verify your identity."}
         </h1>
         <p className="mt-3 text-[14px] leading-relaxed text-[var(--color-ink-3)]">
-          About four minutes. We'll only ask for what regulation requires. When we're done you'll have a portable verified profile you can drop into any chat.
+          About four minutes. We only ask for what regulation requires. When you finish, you get a portable verified profile you can drop into any chat.
         </p>
+
+        {state.invite.groupContext && (
+          <div className="mt-4 rounded-[10px] border border-[var(--color-line)] bg-[var(--color-paper)] p-3">
+            <div className="mono text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">Deal context</div>
+            <div className="mt-1 text-[13px] text-[var(--color-ink)]">{state.invite.groupContext}</div>
+          </div>
+        )}
 
         <ol className="mt-6 space-y-3">
           {[
@@ -37,15 +58,26 @@ export default async function Welcome({ params }: { params: Promise<{ token: str
             ["03", "Location", "GPS · IP · SIM must agree"],
             ["04", "Company & ownership", "Confirm who you sign for"],
             ["05", "Screening", "Sanctions, PEP, adverse-media checks"],
-          ].map(([n, t, d]) => (
+          ].map(([n, t, d], index) => {
+            const step = ["identity", "liveness", "location", "company", "screening"][index]!;
+            const status = state.summary.stepStatus[step as keyof typeof state.summary.stepStatus];
+            return (
             <li key={n} className="flex items-start gap-3 border-b border-[var(--color-line)] pb-3 last:border-0">
               <span className="mono text-[11px] text-[var(--color-ink-4)] pt-0.5 w-6">{n}</span>
               <div>
-                <div className="text-[14px] font-medium text-[var(--color-ink)]">{t}</div>
+                <div className="flex items-center gap-2 text-[14px] font-medium text-[var(--color-ink)]">
+                  <span>{t}</span>
+                  {!state.requiresAccess && status === "passed" && (
+                    <span className="mono text-[10px] uppercase tracking-wider text-[var(--color-signal)]">done</span>
+                  )}
+                  {!state.requiresAccess && state.summary.nextStep === step && (
+                    <span className="mono text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">next</span>
+                  )}
+                </div>
                 <div className="text-[12px] text-[var(--color-ink-4)]">{d}</div>
               </div>
             </li>
-          ))}
+          )})}
         </ol>
 
         <p className="mt-5 text-[11px] leading-relaxed text-[var(--color-ink-4)]">
@@ -53,9 +85,14 @@ export default async function Welcome({ params }: { params: Promise<{ token: str
         </p>
 
         <div className="mt-6 pb-8">
-          <Link href={`/verify/${token}/identity`} className="block">
-            <Button className="w-full">Begin</Button>
+          <Link href={ctaHref} className="block">
+            <Button className="w-full">{ctaLabel}</Button>
           </Link>
+          {state.requiresAccess && (
+            <p className="mt-3 text-[12px] text-[var(--color-ink-4)]">
+              This build uses browser-local access instead of email magic links, so you can start the invite immediately without Resend.
+            </p>
+          )}
         </div>
       </div>
     </IosFrame>

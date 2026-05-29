@@ -1,7 +1,10 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { IosFrame } from "@/components/IosFrame";
 import { StepHeader } from "@/components/StepHeader";
 import { Button } from "@/components/Button";
 import { submitScreening } from "@/lib/actions";
+import { getOnboardingState, getOnboardingTargetPath } from "@/lib/onboarding";
 
 const LISTS = [
   ["OFAC SDN", "United States Treasury · 8,141 entries"],
@@ -14,6 +17,14 @@ const LISTS = [
 
 export default async function ScreeningPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const session = await auth();
+  const state = await getOnboardingState(token, session?.user?.id);
+  if (!state) redirect("/");
+  if (state.requiresAccess) redirect(`/signin?next=${encodeURIComponent(`/verify/${token}/screening`)}`);
+  if (state.boundToOtherUser) redirect(`/verify/${token}`);
+  if (state.summary.nextStep !== "screening") {
+    redirect(getOnboardingTargetPath(token, state.summary.nextStep, state.isLive));
+  }
   async function run() {
     "use server";
     await submitScreening(token);
@@ -27,6 +38,9 @@ export default async function ScreeningPage({ params }: { params: Promise<{ toke
         <p className="mt-2 text-[12px] text-[var(--color-ink-3)]">
           We check you and your beneficial owners against international sanctions, PEP databases, and adverse media. If anything matches, a human reviews — never an algorithm alone.
         </p>
+        <div className="mt-4 rounded-[10px] bg-[var(--color-bg-2)] p-3 text-[11px] text-[var(--color-ink-3)]">
+          <b className="text-[var(--color-ink)]">Profile:</b> {state.profile?.displayName ?? "—"} · {state.profile?.company ?? "Signing personally"} · {state.profile?.country ?? "—"}
+        </div>
 
         <ul className="mt-5 space-y-1">
           {LISTS.map(([name, desc]) => (

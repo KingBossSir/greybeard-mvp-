@@ -4,25 +4,25 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { invites, profiles, verifications } from "./schema";
+import { invites, profiles, users, verifications } from "./schema";
 import {
   IdentitySubmitSchema,
   LivenessSubmitSchema,
   LocationSubmitSchema,
   CompanySubmitSchema,
+  ProfileSettingsSchema,
 } from "./validators";
 import { hashToken } from "./crypto";
 import { verifyIdentity, verifyLiveness } from "./kyc";
-import { crossCheck, isSanctioned } from "./geo";
+import { countryFromE164, crossCheck, hashPreciseCoords, isSanctioned } from "./geo";
 import { screen } from "./screening";
-import { resolveBeneficialOwners } from "./registry";
+import { lookup, resolveBeneficialOwners } from "./registry";
 import { storeDocument } from "./vault";
 import { appendEvent } from "./ledger";
-import { auth } from "./auth";
+import { auth, updateLocalAccessProfile } from "./auth";
 import { limiters, clientIp } from "./ratelimit";
 import { computeScore } from "./score";
-
-type VerificationStep = "identity" | "liveness" | "location" | "company" | "screening";
+import { type VerificationStatus, type VerificationStep } from "./onboarding";
 
 async function requireProfile(token: string) {
   // Resolve invite → ensure session user matches consumedBy (or claim now).
@@ -54,7 +54,7 @@ async function requireProfile(token: string) {
       .returning();
     profile = inserted[0]!;
   }
-  return profile;
+  return { invite: inv, profile };
 }
 
 async function requirePassedSteps(profileId: string, steps: VerificationStep[]) {
@@ -73,7 +73,7 @@ async function requirePassedSteps(profileId: string, steps: VerificationStep[]) 
   }
 }
 
-async function setStep(profileId: string, step: VerificationStep, result: Record<string, unknown>, passed: boolean) {
+async function setStep(profileId: string, step: VerificationStep, result: Record<string, unknown>, status: VerificationStatus) {
   // Idempotent upsert.
   const existing = await db
     .select()
@@ -81,13 +81,13 @@ async function setStep(profileId: string, step: VerificationStep, result: Record
     .where(and(eq(verifications.profileId, profileId), eq(verifications.step, step)));
   if (existing.length) {
     await db.update(verifications)
-      .set({ status: passed ? "passed" : "failed", result, completedAt: new Date() })
+      .set({ status, result, completedAt: new Date() })
       .where(eq(verifications.id, existing[0]!.id));
   } else {
     await db.insert(verifications).values({
       profileId,
       step,
-      status: passed ? "passed" : "failed",
+      status,
       result,
       completedAt: new Date(),
     });
@@ -106,7 +106,7 @@ export async function submitIdentity(token: string, formData: FormData) {
   });
   if (isSanctioned(parsed.declaredCountry)) throw new Error("sanctioned region");
 
-  const profile = await requireProfile(token);
+  const { profile } = await requireProfile(token);
   const bytes = Buffer.from(parsed.documentBase64, "base64");
   if (bytes.byteLength > 8 * 1024 * 1024) throw new Error("file too large");
 
@@ -125,13 +125,17 @@ export async function submitIdentity(token: string, formData: FormData) {
     documentNumberHash: id.documentNumberHash,
     docId: doc.id,
     country: id.country,
-  }, id.ok);
+  }, id.ok ? "passed" : "failed");
 
   await appendEvent({
     profileId: profile.id,
     type: "doc.identity",
     payload: { providerRef: id.providerRef, country: id.country, ok: id.ok, docHash: id.documentNumberHash },
   });
+
+  if (id.ok) {
+    await db.update(profiles).set({ country: id.country }).where(eq(profiles.id, profile.id));
+  }
 
   redirect(`/verify/${token}/liveness`);
 }
@@ -144,7 +148,7 @@ export async function submitLiveness(token: string, formData: FormData) {
   const raw = formData.get("frameHashes");
   const parsed = LivenessSubmitSchema.parse({ frameHashes: typeof raw === "string" ? JSON.parse(raw) : [] });
 
-  const profile = await requireProfile(token);
+  const { profile } = await requireProfile(token);
   const [identityStep] = await db.select().from(verifications).where(and(eq(verifications.profileId, profile.id), eq(verifications.step, "identity")));
   if (!identityStep || identityStep.status !== "passed") throw new Error("identity step required first");
 
@@ -152,7 +156,7 @@ export async function submitLiveness(token: string, formData: FormData) {
     frameHashes: parsed.frameHashes,
     identityProviderRef: (identityStep.result as { providerRef: string }).providerRef,
   });
-  await setStep(profile.id, "liveness", { providerRef: r.providerRef, matchScore: r.matchScore, isLive: r.isLive }, r.ok);
+  await setStep(profile.id, "liveness", { providerRef: r.providerRef, matchScore: r.matchScore, isLive: r.isLive }, r.ok ? "passed" : "failed");
   await appendEvent({ profileId: profile.id, type: "liveness.ok", payload: { matchScore: r.matchScore, ok: r.ok } });
 
   redirect(`/verify/${token}/location`);
@@ -165,20 +169,67 @@ export async function submitLocation(token: string, formData: FormData) {
 
   const parsed = LocationSubmitSchema.parse({
     gpsCountry: formData.get("gpsCountry"),
-    ipCountry: formData.get("ipCountry"),
-    simCountry: formData.get("simCountry"),
     gpsCity: formData.get("gpsCity") || undefined,
+    gpsLat: formData.get("gpsLat") || undefined,
+    gpsLng: formData.get("gpsLng") || undefined,
+    gpsCapturedAt: formData.get("gpsCapturedAt") || undefined,
   });
 
-  const verdict = crossCheck(parsed);
-  const profile = await requireProfile(token);
+  const { profile, invite } = await requireProfile(token);
   await requirePassedSteps(profile.id, ["identity", "liveness"]);
-  await setStep(profile.id, "location", { signals: verdict.signals, reason: verdict.reason ?? null, city: verdict.storedCity }, verdict.ok);
+
+  const headerIpCountry =
+    h.get("x-vercel-ip-country") ??
+    h.get("cf-ipcountry") ??
+    h.get("x-country-code") ??
+    parsed.gpsCountry;
+  const normalizedIpCountry = headerIpCountry.toUpperCase();
+  const phoneCountry = countryFromE164(invite.inviteePhone) ?? normalizedIpCountry;
+  const verdict = crossCheck({
+    gpsCountry: parsed.gpsCountry,
+    ipCountry: normalizedIpCountry,
+    simCountry: phoneCountry,
+    gpsCity: parsed.gpsCity,
+    gpsLat: parsed.gpsLat,
+    gpsLng: parsed.gpsLng,
+  });
+  const preciseHash =
+    typeof parsed.gpsLat === "number" &&
+    typeof parsed.gpsLng === "number" &&
+    parsed.gpsCapturedAt
+      ? hashPreciseCoords(parsed.gpsLat, parsed.gpsLng, parsed.gpsCapturedAt)
+      : undefined;
+
+  await setStep(
+    profile.id,
+    "location",
+    {
+      signals: verdict.signals,
+      reason: verdict.reason ?? null,
+      city: verdict.storedCity,
+      preciseHash: preciseHash ?? null,
+      signalSources: {
+        gps: "browser_geolocation",
+        ip: h.get("x-vercel-ip-country") || h.get("cf-ipcountry") ? "edge_geo" : "fallback",
+        sim: invite.inviteePhone ? "invite_phone" : "ip_fallback",
+      },
+    },
+    verdict.ok ? "passed" : "failed"
+  );
   await appendEvent({
     profileId: profile.id,
     type: "location.verified",
-    payload: { ok: verdict.ok, signals: verdict.signals, reason: verdict.reason ?? null, city: verdict.storedCity },
+    payload: {
+      ok: verdict.ok,
+      signals: verdict.signals,
+      reason: verdict.reason ?? null,
+      city: verdict.storedCity,
+      preciseHash: preciseHash ?? null,
+    },
   });
+  if (verdict.ok) {
+    await db.update(profiles).set({ country: parsed.gpsCountry }).where(eq(profiles.id, profile.id));
+  }
   if (!verdict.ok) throw new Error(verdict.reason === "sanctioned" ? "Sanctioned region" : "Location signals mismatch");
   redirect(`/verify/${token}/company`);
 }
@@ -190,23 +241,55 @@ export async function submitCompany(token: string, formData: FormData) {
 
   const parsed = CompanySubmitSchema.parse({
     registryId: formData.get("registryId") || undefined,
+    companyName: formData.get("companyName") || undefined,
     signingPersonally: formData.get("signingPersonally") === "on",
   });
-  const profile = await requireProfile(token);
+  const { profile } = await requireProfile(token);
   await requirePassedSteps(profile.id, ["identity", "liveness", "location"]);
 
-  let bo = parsed.signingPersonally ? [] : await resolveBeneficialOwners(parsed.registryId!);
-  await setStep(profile.id, "company", { registryId: parsed.registryId ?? null, signingPersonally: parsed.signingPersonally, bo }, true);
+  const companies = await lookup(profile.country ?? "NG");
+  const selected = parsed.registryId ? companies.find((c) => c.registryId === parsed.registryId) : null;
+  const resolvedCompanyName =
+    parsed.signingPersonally
+      ? ""
+      : (selected?.name ?? parsed.companyName?.trim() ?? "");
+  const bo = parsed.signingPersonally
+    ? []
+    : parsed.registryId
+      ? await resolveBeneficialOwners(parsed.registryId)
+      : [];
+  await setStep(
+    profile.id,
+    "company",
+    {
+      registryId: parsed.registryId ?? null,
+      signingPersonally: parsed.signingPersonally,
+      companyName: resolvedCompanyName || null,
+      bo,
+    },
+    "passed"
+  );
   await appendEvent({
     profileId: profile.id,
     type: "company.confirmed",
-    payload: { registryId: parsed.registryId ?? null, personal: parsed.signingPersonally, boDepth: bo.length },
+    payload: {
+      registryId: parsed.registryId ?? null,
+      companyName: resolvedCompanyName || null,
+      personal: parsed.signingPersonally,
+      boDepth: bo.length,
+    },
   });
+  await db
+    .update(profiles)
+    .set({
+      company: parsed.signingPersonally ? null : resolvedCompanyName || profile.company,
+    })
+    .where(eq(profiles.id, profile.id));
   redirect(`/verify/${token}/screening`);
 }
 
 export async function submitScreening(token: string) {
-  const profile = await requireProfile(token);
+  const { profile } = await requireProfile(token);
   await requirePassedSteps(profile.id, ["identity", "liveness", "location", "company"]);
 
   await appendEvent({
@@ -217,7 +300,12 @@ export async function submitScreening(token: string) {
 
   const result = await screen({ fullName: profile.displayName, country: profile.country ?? undefined });
 
-  await setStep(profile.id, "screening", { hits: result.hits, providerRef: result.providerRef }, result.ok);
+  await setStep(
+    profile.id,
+    "screening",
+    { hits: result.hits, providerRef: result.providerRef },
+    result.ok ? "passed" : "review"
+  );
   await appendEvent({
     profileId: profile.id,
     type: "screening.complete",
@@ -244,14 +332,38 @@ export async function submitScreening(token: string) {
 
   await db
     .update(profiles)
-    .set({ tier: "provisional", isLive: true, liveAt: new Date(), score: initial.total })
+    .set({ tier: initial.tier, isLive: true, liveAt: new Date(), score: initial.total })
     .where(eq(profiles.id, profile.id));
 
   await appendEvent({
     profileId: profile.id,
     type: "profile.live",
-    payload: { tier: "provisional", score: initial.total },
+    payload: { tier: initial.tier, score: initial.total },
   });
 
   redirect(`/verify/${token}/done`);
+}
+
+export async function updateProfileSettings(formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("not authenticated");
+
+  const parsed = ProfileSettingsSchema.parse({
+    displayName: formData.get("displayName"),
+    company: formData.get("company") || "",
+    country: formData.get("country") || "",
+  });
+
+  await db
+    .update(profiles)
+    .set({
+      displayName: parsed.displayName,
+      company: parsed.company?.trim() ? parsed.company.trim() : null,
+      country: parsed.country?.trim() ? parsed.country.trim() : null,
+    })
+    .where(eq(profiles.userId, session.user.id));
+  await db.update(users).set({ name: parsed.displayName }).where(eq(users.id, session.user.id));
+
+  await updateLocalAccessProfile({ name: parsed.displayName });
+  redirect("/dashboard/settings?saved=1");
 }

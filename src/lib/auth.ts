@@ -49,6 +49,17 @@ function serializeSession(payload: SessionPayload) {
   return `${body}.${sig}`;
 }
 
+async function persistSession(payload: SessionPayload) {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, serializeSession(payload), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+}
+
 function parseSessionCookie(raw?: string | null): SessionPayload | null {
   if (!raw) return null;
   const [body, providedSig] = raw.split(".");
@@ -94,16 +105,18 @@ export async function createLocalAccess(displayNameInput: string, redirectTo = "
     name: displayName,
   };
 
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, serializeSession(payload), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
-
+  await persistSession(payload);
   redirect(redirectTo);
+}
+
+export async function updateLocalAccessProfile(input: { name?: string; email?: string | null }) {
+  const session = await auth();
+  if (!session?.user?.id) return;
+  await persistSession({
+    id: session.user.id,
+    name: input.name ?? session.user.name ?? undefined,
+    email: input.email ?? session.user.email ?? undefined,
+  });
 }
 
 export async function signOut(options?: { redirectTo?: string }) {

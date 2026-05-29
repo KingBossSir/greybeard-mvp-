@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAccessProfile, getRecentLedgerEvents } from "@/lib/local-access";
+import { credentialBadges, getVerificationSummary } from "@/lib/onboarding";
 import { IosFrame } from "@/components/IosFrame";
 import { ProfileCard } from "@/components/ProfileCard";
 import { Button } from "@/components/Button";
@@ -15,6 +16,7 @@ export default async function Account() {
     name: session.user.name,
   });
   const events = await getRecentLedgerEvents(profile.id, 8);
+  const summary = profile.isFallback ? null : await getVerificationSummary(profile.id);
 
   const initials = profile.displayName.split(/\s+/).map((s) => s[0]?.toUpperCase()).slice(0, 2).join("");
 
@@ -31,12 +33,12 @@ export default async function Account() {
           name={profile.displayName}
           company={profile.company}
           handle={profile.handle}
-          since={2026}
+          since={profile.createdAt.getFullYear()}
           tier={profile.tier}
           score={profile.score}
           dealsClosed={profile.dealsClosed}
           dealsDisputed={profile.dealsDisputed}
-          credentials={["KYC complete", "Bank linked", "BO resolved"]}
+          credentials={summary ? credentialBadges(summary) : ["Local access mode"]}
         />
 
         {profile.isFallback && (
@@ -52,18 +54,26 @@ export default async function Account() {
           </div>
           <ul className="mt-3 space-y-2 text-[12px]">
             <li className="flex items-center gap-2 text-[var(--color-ink-3)]">
-              <span className="text-[var(--color-signal)]">✓</span> KYC complete
+              <span className="text-[var(--color-signal)]">{summary?.identityOk ? "✓" : "○"}</span> Identity verified
             </li>
             <li className="flex items-center gap-2 text-[var(--color-ink-3)]">
-              <span className="text-[var(--color-signal)]">✓</span> Bank account linked
+              <span className="text-[var(--color-signal)]">{summary?.livenessOk ? "✓" : "○"}</span> Liveness verified
             </li>
             <li className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-[var(--color-ink)]">○ Close 3 deals dispute-free</span>
-              <span className="mono text-[10px] text-[var(--color-ink-4)]">0 of 3</span>
+              <span className="flex items-center gap-2 text-[var(--color-ink)]">
+                {summary?.companyOk ? "✓" : "○"} Company and ownership confirmed
+              </span>
+              <span className="mono text-[10px] text-[var(--color-ink-4)]">
+                {summary?.companyOk ? "done" : "pending"}
+              </span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-[var(--color-ink)]">○ Maintain clean screening 30 days</span>
-              <span className="mono text-[10px] text-[var(--color-ink-4)]">day 1 of 30</span>
+              <span className="flex items-center gap-2 text-[var(--color-ink)]">
+                {summary?.screeningOk ? "✓" : summary?.awaitingReview ? "!" : "○"} Screening and compliance
+              </span>
+              <span className="mono text-[10px] text-[var(--color-ink-4)]">
+                {summary?.screeningOk ? "clear" : summary?.awaitingReview ? "review" : "pending"}
+              </span>
             </li>
           </ul>
           <div className="mt-3 text-[10px] text-[var(--color-ink-4)]">

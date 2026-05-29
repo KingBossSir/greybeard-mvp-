@@ -9,7 +9,7 @@ type SessionUserLike = {
 
 export type AccessProfile = Pick<
   Profile,
-  "id" | "handle" | "displayName" | "company" | "country" | "tier" | "score" | "dealsClosed" | "dealsDisputed" | "liveAt"
+  "id" | "handle" | "displayName" | "company" | "country" | "tier" | "score" | "dealsClosed" | "dealsDisputed" | "liveAt" | "createdAt" | "isLive"
 > & { isFallback: boolean };
 
 function fallbackHandle(userId: string) {
@@ -27,6 +27,8 @@ export function fallbackProfile(user: SessionUserLike): AccessProfile {
     score: 0,
     dealsClosed: 0,
     dealsDisputed: 0,
+    isLive: false,
+    createdAt: new Date(),
     liveAt: null,
     isFallback: true,
   };

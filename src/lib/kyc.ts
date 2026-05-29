@@ -62,12 +62,20 @@ export async function verifyLiveness(args: {
   if (mockProvider !== "mock") {
     throw new Error("Trulioo integration not wired");
   }
-  // Deterministic on the joined frame hashes.
-  const seed = createHash("sha256").update(args.frameHashes.join("|")).digest();
-  const score = 0.7 + (seed[0]! / 255) * 0.3;
+  const uniqueFrames = new Set(args.frameHashes).size;
+  const movementTransitions = args.frameHashes.reduce((count, hash, index, all) => {
+    if (index === 0) return count;
+    return count + (hash !== all[index - 1] ? 1 : 0);
+  }, 0);
+  const uniquenessRatio = uniqueFrames / args.frameHashes.length;
+  const transitionRatio = args.frameHashes.length > 1 ? movementTransitions / (args.frameHashes.length - 1) : 0;
+  const seededNoise = createHash("sha256").update(args.frameHashes.join("|")).digest()[0]! / 255;
+  const score = Math.min(0.99, 0.45 + uniquenessRatio * 0.35 + transitionRatio * 0.15 + seededNoise * 0.05);
+  const ok = uniquenessRatio >= 0.75 && transitionRatio >= 0.7 && score >= 0.8;
+
   return {
-    ok: score > 0.8,
-    isLive: score > 0.8,
+    ok,
+    isLive: ok,
     matchScore: score,
     providerRef: `mock_live_${args.identityProviderRef.slice(-8)}`,
   };

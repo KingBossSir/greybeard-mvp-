@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { InviteGenerator } from "@/components/onboarding/InviteGenerator";
 
 export default async function Counterparties() {
   const session = await auth();
@@ -9,7 +10,12 @@ export default async function Counterparties() {
     <main className="mx-auto max-w-5xl px-6 py-8">
       <Link href="/dashboard" className="text-[13px] text-[var(--color-ink-3)]">← Dashboard</Link>
       <h1 className="mt-6 text-3xl font-semibold tracking-tight">Counterparties</h1>
-      <p className="mt-2 text-[13px] text-[var(--color-ink-3)]">No counterparties yet.</p>
+      <p className="mt-2 text-[13px] text-[var(--color-ink-3)]">
+        Start a real onboarding flow from here, then share the invite into WhatsApp or any deal chat.
+      </p>
+      <div className="mt-6">
+        <InviteGenerator />
+      </div>
     </main>
   );
 }

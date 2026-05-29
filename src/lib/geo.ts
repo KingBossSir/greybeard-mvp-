@@ -64,3 +64,44 @@ export function hashPreciseCoords(lat: number, lng: number, tsIso: string): stri
 export function isSanctioned(country: string): boolean {
   return SANCTIONED.has(country.toUpperCase());
 }
+
+const PHONE_PREFIX_TO_COUNTRY = [
+  ["+971", "AE"],
+  ["+965", "KW"],
+  ["+972", "IL"],
+  ["+973", "BH"],
+  ["+974", "QA"],
+  ["+975", "BT"],
+  ["+977", "NP"],
+  ["+234", "NG"],
+  ["+233", "GH"],
+  ["+232", "SL"],
+  ["+231", "LR"],
+  ["+230", "MU"],
+  ["+229", "BJ"],
+  ["+228", "TG"],
+  ["+227", "NE"],
+  ["+226", "BF"],
+  ["+225", "CI"],
+  ["+224", "GN"],
+  ["+223", "ML"],
+  ["+221", "SN"],
+  ["+220", "GM"],
+  ["+216", "TN"],
+  ["+212", "MA"],
+  ["+211", "SS"],
+  ["+20", "EG"],
+  ["+65", "SG"],
+  ["+44", "GB"],
+  ["+33", "FR"],
+  ["+49", "DE"],
+  ["+39", "IT"],
+  ["+34", "ES"],
+  ["+1", "US"],
+] as const;
+
+export function countryFromE164(phone?: string | null) {
+  if (!phone?.startsWith("+")) return undefined;
+  const match = PHONE_PREFIX_TO_COUNTRY.find(([prefix]) => phone.startsWith(prefix));
+  return match?.[1];
+}

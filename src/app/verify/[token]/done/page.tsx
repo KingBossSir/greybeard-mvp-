@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { invites, profiles } from "@/lib/schema";
 import { hashToken } from "@/lib/crypto";
+import { credentialBadges, getVerificationSummary } from "@/lib/onboarding";
 import { IosFrame } from "@/components/IosFrame";
 import { ProfileCard } from "@/components/ProfileCard";
 import { Button } from "@/components/Button";
@@ -22,6 +23,7 @@ export default async function DonePage({
 
   const [profile] = await db.select().from(profiles).where(eq(profiles.userId, inv.consumedBy));
   if (!profile) redirect("/");
+  const summary = await getVerificationSummary(profile.id);
 
   const initials = profile.displayName.split(/\s+/).map((s) => s[0]?.toUpperCase()).slice(0, 2).join("");
 
@@ -46,12 +48,12 @@ export default async function DonePage({
           name={profile.displayName}
           company={profile.company}
           handle={profile.handle}
-          since={2026}
+          since={profile.createdAt.getFullYear()}
           tier={profile.tier}
           score={profile.score}
           dealsClosed={profile.dealsClosed}
           dealsDisputed={profile.dealsDisputed}
-          credentials={["KYC complete", "BO resolved", "First-deal pending"]}
+          credentials={credentialBadges(summary)}
         />
 
         <h3 className="mono mt-6 text-[10px] uppercase tracking-wider text-[var(--color-ink-4)]">How to use it</h3>

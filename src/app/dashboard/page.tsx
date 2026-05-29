@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAccessProfile, getRecentLedgerEvents } from "@/lib/local-access";
 import { computeScore } from "@/lib/score";
+import { credentialBadges, getVerificationSummary } from "@/lib/onboarding";
 
 export default async function Dashboard() {
   const session = await auth();
@@ -12,15 +13,17 @@ export default async function Dashboard() {
     name: session.user.name,
   });
   const events = await getRecentLedgerEvents(profile.id, 20);
+  const summary = profile.isFallback ? null : await getVerificationSummary(profile.id);
+  const daysOnPlatform = Math.max(0, Math.floor((Date.now() - profile.createdAt.getTime()) / (1000 * 60 * 60 * 24)));
 
   const sc = computeScore({
-    kycComplete: true,
-    bankLinked: true,
-    livenessOk: true,
-    vouchesReceived: [{ weight: "charter" }],
+    kycComplete: !!summary?.identityOk,
+    bankLinked: false,
+    livenessOk: !!summary?.livenessOk,
+    vouchesReceived: [],
     dealsClosedDisputeFree: profile.dealsClosed,
     counterpartyCountries: 0,
-    daysOnPlatform: 1,
+    daysOnPlatform,
     daysSinceLastEvent: 0,
   });
 
@@ -55,6 +58,18 @@ export default async function Dashboard() {
           <p className="mt-1 text-[14px] text-[var(--color-ink-3)]">
             {profile.company ?? "—"} · {profile.country ?? "—"} · since {profile.liveAt?.getFullYear() ?? 2026}
           </p>
+          {summary && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {credentialBadges(summary).map((badge) => (
+                <span
+                  key={badge}
+                  className="rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-ink-3)]"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
           {profile.isFallback && (
             <p className="mt-3 max-w-xl text-[12px] text-[var(--color-ink-4)]">
               Running in local-access mode. Session access is working, but database-backed profile data is temporarily unavailable.

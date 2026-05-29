@@ -5,21 +5,27 @@ import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignIn() {
+export default async function SignIn({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
   const session = await auth();
-  if (session?.user?.id) redirect("/account");
+  const sp = await searchParams;
+  const nextPath = typeof sp.next === "string" && sp.next.startsWith("/") ? sp.next : "/account";
+  if (session?.user?.id) redirect(nextPath);
 
   async function action(formData: FormData) {
     "use server";
     const displayName = String(formData.get("displayName") ?? "");
-    await createLocalAccess(displayName, "/account");
+    await createLocalAccess(displayName, nextPath);
   }
 
   return (
     <main className="mx-auto max-w-md px-6 py-24">
       <h1 className="text-2xl font-semibold tracking-tight">Open GreyBeard</h1>
       <p className="mt-2 text-[13px] text-[var(--color-ink-3)]">
-        No email setup required. This creates local access for this browser and drops you straight into the app.
+        No email setup required. This creates local access for this browser and drops you straight into GreyBeard.
       </p>
       <form action={action} className="mt-6 space-y-3">
         <input

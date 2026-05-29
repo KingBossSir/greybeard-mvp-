@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crossCheck, hashPreciseCoords, isSanctioned } from "@/lib/geo";
+import { countryFromE164, crossCheck, hashPreciseCoords, isSanctioned } from "@/lib/geo";
 
 describe("geo cross-check", () => {
   it("passes when all three signals agree", () => {
@@ -47,5 +47,18 @@ describe("isSanctioned", () => {
   });
   it("does not flag Nigeria", () => {
     expect(isSanctioned("NG")).toBe(false);
+  });
+});
+
+describe("countryFromE164", () => {
+  it("maps supported dial prefixes", () => {
+    expect(countryFromE164("+2348012345678")).toBe("NG");
+    expect(countryFromE164("+233201234567")).toBe("GH");
+    expect(countryFromE164("+971501234567")).toBe("AE");
+  });
+
+  it("returns undefined for missing or unknown numbers", () => {
+    expect(countryFromE164(undefined)).toBeUndefined();
+    expect(countryFromE164("08012345678")).toBeUndefined();
   });
 });
