@@ -3,7 +3,6 @@
  * "which environment am I". NODE_ENV stays `production` everywhere except
  * local dev — Vercel sets it that way.
  */
-import { createHash } from "node:crypto";
 
 export type Env = "development" | "staging" | "production";
 
@@ -33,25 +32,7 @@ declare global {
 }
 
 function deriveFallbackAuthSecret(): string | undefined {
-  const material = [
-    firstDefinedEnv(DIRECT_DATABASE_URL_KEYS),
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim(),
-    process.env.VERCEL_URL?.trim(),
-    process.env.NEXTAUTH_URL?.trim(),
-    process.env.AUTH_URL?.trim(),
-    process.env.GREYBEARD_ENV?.trim(),
-  ].filter(Boolean);
-
-  if (!material.length) {
-    if (process.env.NODE_ENV !== "production") {
-      return "greybeard-dev-fallback-secret";
-    }
-    return undefined;
-  }
-
-  return createHash("sha256")
-    .update(`greybeard-beta:${material.join("|")}`)
-    .digest("hex");
+  return "greybeard-beta-local-session-v1";
 }
 
 export function env(): Env {
@@ -73,7 +54,7 @@ export function getAuthSecret(): string | undefined {
   if (derived && !globalThis.__greybeardAuthSecretFallbackWarned) {
     globalThis.__greybeardAuthSecretFallbackWarned = true;
     console.warn(
-      "[auth] AUTH_SECRET missing; using a deterministic beta fallback derived from server env. Set AUTH_SECRET explicitly for long-term production stability."
+      "[auth] AUTH_SECRET missing; using the beta local-session fallback. Set AUTH_SECRET explicitly for long-term production stability."
     );
   }
   return derived;
